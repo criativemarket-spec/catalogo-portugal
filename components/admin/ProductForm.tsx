@@ -1,9 +1,9 @@
 'use client'
 // components/admin/ProductForm.tsx
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Image from 'next/image'
 import { Product, Category } from '@/types'
-import { X, Plus, Loader2, Link } from 'lucide-react'
+import { X, Plus, Loader2, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
@@ -13,6 +13,9 @@ interface ProductFormProps {
   loading?: boolean
 }
 
+const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
+
 export default function ProductForm({ initialData, categories, onSubmit, loading = false }: ProductFormProps) {
   const [name, setName] = useState(initialData?.name || '')
   const [description, setDescription] = useState(initialData?.description || '')
@@ -21,14 +24,35 @@ export default function ProductForm({ initialData, categories, onSubmit, loading
   const [sku, setSku] = useState(initialData?.sku || '')
   const [visible, setVisible] = useState(initialData?.visible ?? true)
   const [featured, setFeatured] = useState(initialData?.featured ?? false)
-  const [images, setImages] = useState<string[]>(initialData?.images || [''])
-  const [imgErrors, setImgErrors] = useState<Record<number, boolean>>({})
+  const [images, setImages] = useState<string[]>(initialData?.images || [])
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  const addImageField = () => setImages(prev => [...prev, ''])
-
-  const updateImage = (index: number, value: string) => {
-    setImages(prev => prev.map((img, i) => i === index ? value : img))
-    setImgErrors(prev => ({ ...prev, [index]: false }))
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setUploading(true)
+    try {
+      const urls: string[] = []
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('upload_preset', UPLOAD_PRESET || 'brasil_premium')
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME || 'dz0h8hyvl'}/image/upload`, {
+          method: 'POST',
+          body: formData,
+        })
+        const data = await res.json()
+        if (data.secure_url) urls.push(data.secure_url)
+      }
+      setImages(prev => [...prev, ...urls])
+      toast.success(`${urls.length} foto(s) enviada(s)!`)
+    } catch {
+      toast.error('Erro ao enviar fotos')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   const removeImage = (index: number) => {
@@ -41,7 +65,6 @@ export default function ProductForm({ initialData, categories, onSubmit, loading
       toast.error('Preencha nome, preço e categoria')
       return
     }
-    const validImages = images.filter(img => img.trim() !== '')
     await onSubmit({
       name: name.trim(),
       description: description.trim(),
@@ -50,7 +73,7 @@ export default function ProductForm({ initialData, categories, onSubmit, loading
       sku: sku.trim(),
       visible,
       featured,
-      images: validImages,
+      images,
     })
   }
 
@@ -61,174 +84,100 @@ export default function ProductForm({ initialData, categories, onSubmit, loading
         <p className="font-body text-xs tracking-[0.3em] uppercase text-nude-400 mb-5">
           Informações do produto
         </p>
-
         <div>
           <label className="label-admin">Nome do produto *</label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            className="input-admin"
-            placeholder="Ex: Geleia de Rosas Hidratante"
-            required
-          />
+          <input type="text" value={name} onChange={e => setName(e.target.value)} className="input-admin" placeholder="Ex: Geleia Hidratante Romã 200ml" required />
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="label-admin">Preço (€) *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              className="input-admin"
-              placeholder="0.00"
-              required
-            />
+            <input type="number" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} className="input-admin" placeholder="0.00" required />
           </div>
           <div>
-            <label className="label-admin">Código do produto (opcional)</label>
-            <input
-              type="text"
-              value={sku}
-              onChange={e => setSku(e.target.value)}
-              className="input-admin"
-              placeholder="Ex: GEL-001"
-            />
+            <label className="label-admin">Código (opcional)</label>
+            <input type="text" value={sku} onChange={e => setSku(e.target.value)} className="input-admin" placeholder="Ex: GEL-001" />
           </div>
         </div>
-
         <div>
           <label className="label-admin">Categoria *</label>
-          <select
-            value={categoryId}
-            onChange={e => setCategoryId(e.target.value)}
-            className="input-admin"
-            required
-          >
+          <select value={categoryId} onChange={e => setCategoryId(e.target.value)} className="input-admin" required>
             <option value="">Selecione uma categoria</option>
             {categories.map(cat => (
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
           </select>
         </div>
-
         <div>
           <label className="label-admin">Descrição</label>
-          <textarea
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            className="input-admin resize-none"
-            rows={4}
-            placeholder="Descreva o produto, benefícios, modo de uso..."
-          />
+          <textarea value={description} onChange={e => setDescription(e.target.value)} className="input-admin resize-none" rows={4} placeholder="Descreva o produto..." />
         </div>
       </div>
 
-      {/* URLs das fotos */}
-      <div className="bg-white p-6 md:p-8">
-        <p className="font-body text-xs tracking-[0.3em] uppercase text-nude-400 mb-2">
-          Fotos do produto
-        </p>
-        <p className="font-body text-xs text-nude-400 mb-5">
-          Cole o link direto da imagem. Use <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer" className="text-[#B8860B] underline">imgbb.com</a> para hospedar gratuitamente — após upload, copie o link que aparece em "Ver links".
-        </p>
-
-        <div className="space-y-3">
-          {images.map((url, i) => (
-            <div key={i} className="flex gap-3 items-start">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-body text-[10px] tracking-widest uppercase text-nude-400">
-                    {i === 0 ? 'Foto principal *' : `Foto ${i + 1}`}
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={url}
-                    onChange={e => updateImage(i, e.target.value)}
-                    className="input-admin flex-1"
-                    placeholder="https://i.ibb.co/..."
-                  />
-                  {images.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeImage(i)}
-                      className="p-3 text-nude-400 hover:text-red-500 transition-colors border border-nude-200"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                {/* Preview */}
-                {url && !imgErrors[i] && (
-                  <div className="mt-2 relative w-20 h-20 bg-nude-100 overflow-hidden">
-                    <Image
-                      src={url}
-                      alt={`Preview ${i + 1}`}
-                      fill
-                      className="object-cover"
-                      unoptimized
-                      onError={() => setImgErrors(prev => ({ ...prev, [i]: true }))}
-                    />
-                  </div>
-                )}
-                {url && imgErrors[i] && (
-                  <p className="font-body text-xs text-red-400 mt-1">Link inválido ou imagem não carregou</p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={addImageField}
-          className="mt-4 flex items-center gap-2 font-body text-xs tracking-widest uppercase text-nude-500 hover:text-nude-700 transition-colors border border-nude-200 px-4 py-2"
-        >
-          <Plus size={13} /> Adicionar mais fotos
-        </button>
-
-        <div className="mt-4 p-4 bg-nude-50 border border-nude-100">
-          <p className="font-body text-xs text-nude-500 font-medium mb-2">Como hospedar fotos gratuitamente:</p>
-          <ol className="font-body text-xs text-nude-400 space-y-1 list-decimal list-inside">
-            <li>Acesse <a href="https://imgbb.com" target="_blank" rel="noopener noreferrer" className="text-[#B8860B] underline">imgbb.com</a></li>
-            <li>Clique em "Start uploading" e selecione as fotos</li>
-            <li>Após o upload, clique em "Ver links"</li>
-            <li>Copie os links que começam com <strong>https://i.ibb.co/</strong></li>
-            <li>Cole nos campos acima</li>
-          </ol>
-        </div>
-      </div>
-
-      {/* Visibilidade */}
+      {/* Upload de fotos */}
       <div className="bg-white p-6 md:p-8">
         <p className="font-body text-xs tracking-[0.3em] uppercase text-nude-400 mb-5">
-          Configurações
+          Fotos do produto
         </p>
+
+        {/* Área de upload */}
+        <label className={`flex flex-col items-center justify-center border-2 border-dashed border-nude-200 p-8 cursor-pointer hover:border-nude-400 transition-colors mb-4 ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+          {uploading ? (
+            <>
+              <Loader2 size={28} className="text-nude-400 animate-spin mb-2" />
+              <p className="font-body text-sm text-nude-500">Enviando fotos...</p>
+            </>
+          ) : (
+            <>
+              <Upload size={28} className="text-nude-400 mb-2" />
+              <p className="font-body text-sm text-nude-500 mb-1">Clique para selecionar fotos</p>
+              <p className="font-body text-xs text-nude-400">JPG, PNG, WebP — múltiplas fotos de uma vez</p>
+            </>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
+        </label>
+
+        {/* Preview das fotos */}
+        {images.length > 0 && (
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+            {images.map((url, i) => (
+              <div key={i} className="relative group">
+                <div className="relative bg-nude-100 overflow-hidden" style={{ aspectRatio: '3/4' }}>
+                  <Image src={url} alt={`Foto ${i + 1}`} fill className="object-cover" unoptimized />
+                  {i === 0 && (
+                    <span className="absolute bottom-0 left-0 right-0 bg-nude-800/70 text-cream text-[9px] text-center py-1 font-body tracking-widest uppercase">
+                      Principal
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeImage(i)}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {images.length === 0 && (
+          <p className="font-body text-xs text-nude-400 text-center">Nenhuma foto adicionada ainda</p>
+        )}
+      </div>
+
+      {/* Configurações */}
+      <div className="bg-white p-6 md:p-8">
+        <p className="font-body text-xs tracking-[0.3em] uppercase text-nude-400 mb-5">Configurações</p>
         <div className="space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={visible}
-              onChange={e => setVisible(e.target.checked)}
-              className="w-4 h-4 accent-nude-700"
-            />
+            <input type="checkbox" checked={visible} onChange={e => setVisible(e.target.checked)} className="w-4 h-4 accent-nude-700" />
             <div>
               <p className="font-body text-sm text-nude-700">Produto visível no catálogo</p>
               <p className="font-body text-xs text-nude-400">Desmarque para ocultar sem excluir</p>
             </div>
           </label>
           <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={featured}
-              onChange={e => setFeatured(e.target.checked)}
-              className="w-4 h-4 accent-nude-700"
-            />
+            <input type="checkbox" checked={featured} onChange={e => setFeatured(e.target.checked)} className="w-4 h-4 accent-nude-700" />
             <div>
               <p className="font-body text-sm text-nude-700">Produto em destaque</p>
               <p className="font-body text-xs text-nude-400">Aparece na página inicial</p>
@@ -237,19 +186,12 @@ export default function ProductForm({ initialData, categories, onSubmit, loading
         </div>
       </div>
 
-      {/* Submit */}
       <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn-primary flex items-center gap-2 disabled:opacity-50"
-        >
+        <button type="submit" disabled={loading || uploading} className="btn-primary flex items-center gap-2 disabled:opacity-50">
           {loading && <Loader2 size={14} className="animate-spin" />}
           {loading ? 'Salvando...' : 'Salvar Produto'}
         </button>
-        <a href="/admin/produtos" className="btn-outline">
-          Cancelar
-        </a>
+        <a href="/admin/produtos" className="btn-outline">Cancelar</a>
       </div>
     </form>
   )
