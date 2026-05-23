@@ -7,13 +7,13 @@ const nextConfig = {
         hostname: 'firebasestorage.googleapis.com',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'i.ibb.co',
+        pathname: '/**',
+      },
     ],
-    unoptimized: false,
   },
-  experimental: {
-    optimizePackageImports: ['lucide-react'],
-  },
-  // Necessário para o Swiper funcionar no bundle
   transpilePackages: ['swiper'],
 }
 
