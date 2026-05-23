@@ -24,12 +24,21 @@ export async function getProducts(opts?: {
   featured?: boolean
   limitCount?: number
 }): Promise<Product[]> {
-  const c: any[] = [where('visible', '==', true), orderBy('createdAt', 'desc')]
-  if (opts?.categoryId) c.splice(1, 0, where('categoryId', '==', opts.categoryId))
-  if (opts?.featured !== undefined) c.splice(1, 0, where('featured', '==', opts.featured))
-  if (opts?.limitCount) c.push(limit(opts.limitCount))
-  const snap = await getDocs(query(collection(db, COL), ...c))
-  return snap.docs.map(mapDoc)
+  // Query simples sem índice composto
+  const snap = await getDocs(collection(db, COL))
+  let results = snap.docs.map(mapDoc).filter(p => p.visible)
+  
+  if (opts?.categoryId) {
+    results = results.filter(p => p.categoryId === opts.categoryId)
+  }
+  if (opts?.featured !== undefined) {
+    results = results.filter(p => p.featured === opts.featured)
+  }
+  results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  if (opts?.limitCount) {
+    results = results.slice(0, opts.limitCount)
+  }
+  return results
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
@@ -39,8 +48,8 @@ export async function getProductById(id: string): Promise<Product | null> {
 }
 
 export async function getAllProductsAdmin(): Promise<Product[]> {
-  const snap = await getDocs(query(collection(db, COL), orderBy('createdAt', 'desc')))
-  return snap.docs.map(mapDoc)
+  const snap = await getDocs(collection(db, COL))
+  return snap.docs.map(mapDoc).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
 
 export async function createProduct(data: Omit<Product, 'id'>): Promise<string> {
@@ -61,9 +70,12 @@ export async function deleteProduct(id: string): Promise<void> {
 }
 
 export async function searchProducts(term: string): Promise<Product[]> {
-  const snap = await getDocs(query(collection(db, COL), where('visible', '==', true), orderBy('name')))
+  const snap = await getDocs(collection(db, COL))
   const lower = term.toLowerCase()
   return snap.docs.map(mapDoc).filter(p =>
-    p.name.toLowerCase().includes(lower) || p.description?.toLowerCase().includes(lower)
+    p.visible && (
+      p.name.toLowerCase().includes(lower) ||
+      p.description?.toLowerCase().includes(lower)
+    )
   )
 }
